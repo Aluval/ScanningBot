@@ -294,23 +294,27 @@ async def unban_cmd(client, m: Message):
         await m.reply(f"❌ Failed to unban\n`{e}`")
         
 
-def userinfo_keyboard(user_id, chat_id):
+def userinfo_keyboard():
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
-                "🔄 Refresh",
-                callback_data=f"userinfo_refresh:{chat_id}:{user_id}"
+                "ℹ️ About",
+                callback_data="userinfo_about"
             )
         ]
     ])
  
+
+from pyrogram.enums import ChatType
+
 @app.on_message(filters.command("userinfo"))
 async def userinfo_cmd(client, m: Message):
 
-    # -------- PRIVATE CHAT --------
+    # -------- PRIVATE CHAT (USER SEES OWN INFO) --------
     if m.chat.type == ChatType.PRIVATE:
         user = m.from_user
-        stats = await db.get_user_stats(user.id)
+
+        global_stats = await db.get_user_stats(user.id)
         last_log = await db.logs.find_one(
             {"user_id": user.id},
             sort=[("time", -1)]
@@ -320,21 +324,18 @@ async def userinfo_cmd(client, m: Message):
             f"👤 **Your Account Info**\n\n"
             f"🆔 ID: `{user.id}`\n"
             f"👤 Username: @{user.username}\n\n"
-            f"⚠️ Total Warns: {stats['warns']}\n"
-            f"🚫 Total Bans: {stats['bans']}\n"
+            f"⚠️ Total Warns: {global_stats['warns']}\n"
+            f"🚫 Total Bans: {global_stats['bans']}\n"
             f"🔍 Last NSFW Reason: "
             f"{last_log['reasons'] if last_log else 'None'}"
         )
 
-        return await m.reply(
-            text,
-            reply_markup=userinfo_keyboard(user.id, "private")
-        )
+        return await m.reply(text, reply_markup=userinfo_keyboard())
 
     # -------- GROUP / SUPERGROUP --------
     if m.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
 
-        # ADMIN checking another user
+        # ADMIN checking another user (reply)
         if m.reply_to_message and m.from_user.is_chat_admin:
             user = m.reply_to_message.from_user
 
@@ -342,7 +343,7 @@ async def userinfo_cmd(client, m: Message):
         elif not m.reply_to_message:
             user = m.from_user
 
-        # BLOCK non-admin inspecting others
+        # BLOCK non-admin checking others
         else:
             return await m.reply("❌ Only admins can view other users info.")
 
@@ -364,60 +365,14 @@ async def userinfo_cmd(client, m: Message):
             f"{last_log['reasons'] if last_log else 'None'}"
         )
 
-        await m.reply(
-            text,
-            reply_markup=userinfo_keyboard(user.id, m.chat.id)
-        )
+        return await m.reply(text, reply_markup=userinfo_keyboard())
 
-
-@app.on_callback_query(filters.regex("^userinfo_refresh"))
-async def userinfo_refresh(client, q: CallbackQuery):
-    _, chat_id, user_id = q.data.split(":")
-    user_id = int(user_id)
-
-    # PRIVATE
-    if chat_id == "private":
-        stats = await db.get_user_stats(user_id)
-        last_log = await db.logs.find_one(
-            {"user_id": user_id},
-            sort=[("time", -1)]
-        )
-
-        text = (
-            f"👤 **Your Account Info**\n\n"
-            f"🆔 ID: `{user_id}`\n\n"
-            f"⚠️ Total Warns: {stats['warns']}\n"
-            f"🚫 Total Bans: {stats['bans']}\n"
-            f"🔍 Last NSFW Reason: "
-            f"{last_log['reasons'] if last_log else 'None'}"
-        )
-
-    # GROUP
-    else:
-        chat_id = int(chat_id)
-        warns = await db.get_warns(chat_id, user_id)
-        ban_info = await db.get_ban_info(chat_id, user_id)
-        global_stats = await db.get_user_stats(user_id)
-        last_log = await db.get_last_log(chat_id, user_id)
-
-        text = (
-            f"👤 **User Info**\n\n"
-            f"🆔 ID: `{user_id}`\n\n"
-            f"⚠️ Group Warns: {warns}/{WARN_LIMIT}\n"
-            f"🚫 Group Ban: {'YES' if ban_info else 'NO'}\n\n"
-            f"📊 **Global Stats**\n"
-            f"⚠️ Total Warns: {global_stats['warns']}\n"
-            f"🚫 Total Bans: {global_stats['bans']}\n\n"
-            f"🔍 Last NSFW Reason: "
-            f"{last_log['reasons'] if last_log else 'None'}"
-        )
-
-    await q.message.edit_text(
-        text,
-        reply_markup=userinfo_keyboard(user_id, chat_id)
+@app.on_callback_query(filters.regex("^userinfo_about$"))
+async def userinfo_about(_, q):
+    await q.answer(
+        "Made by @Sunrises24BotUpdates 🚀",
+        show_alert=True
     )
-    await q.answer("🔄 Updated")
-
 
 
 # ================= SCANNER =================
