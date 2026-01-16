@@ -94,22 +94,23 @@ def settings_keyboard(settings):
         [
             InlineKeyboardButton(
                 f"Scanner: {'ON' if settings['enabled'] else 'OFF'}",
-                callback_data="toggle_enabled"
+                callback_data="SET_toggle_enabled"
             )
         ],
         [
             InlineKeyboardButton(
                 f"Silent Delete: {'ON' if settings['silent_delete'] else 'OFF'}",
-                callback_data="toggle_silent"
+                callback_data="SET_toggle_silent"
             )
         ],
         [
             InlineKeyboardButton(
                 f"Auto Ban: {'ON' if settings['auto_ban'] else 'OFF'}",
-                callback_data="toggle_autoban"
+                callback_data="SET_toggle_autoban"
             )
         ]
     ])
+
 
 @app.on_message(filters.command("settings") & filters.group & filters.user(ADMIN))
 async def settings_cmd(_, m: Message):
@@ -136,21 +137,36 @@ async def settings_cmd(_, m: Message):
     )
 
 
-@app.on_callback_query()
-async def settings_callback(_, q: CallbackQuery):
+@app.on_callback_query(filters.regex("^SET_"))
+async def settings_callback(client, q: CallbackQuery):
     chat_id = q.message.chat.id
+    user_id = q.from_user.id
+
+    # 🔒 CHECK ADMIN
+    try:
+        member = await client.get_chat_member(chat_id, user_id)
+        if not member.privileges:
+            return await q.answer(
+                "❌ Only admins can change settings",
+                show_alert=True
+            )
+    except:
+        return await q.answer("❌ Permission check failed", show_alert=True)
+
+    # ADMIN CONFIRMED
     s = await db.get_settings(chat_id)
 
-    if q.data == "toggle_enabled":
+    if q.data == "SET_toggle_enabled":
         await db.update_setting(chat_id, "enabled", not s["enabled"])
-    elif q.data == "toggle_silent":
+
+    elif q.data == "SET_toggle_silent":
         await db.update_setting(chat_id, "silent_delete", not s["silent_delete"])
-    elif q.data == "toggle_autoban":
+
+    elif q.data == "SET_toggle_autoban":
         await db.update_setting(chat_id, "auto_ban", not s["auto_ban"])
 
-    # refresh text + buttons
+    # REFRESH MESSAGE
     s = await db.get_settings(chat_id)
-
     group_username = f"@{q.message.chat.username}" if q.message.chat.username else "Not set"
 
     text = (
@@ -172,6 +188,7 @@ async def settings_callback(_, q: CallbackQuery):
         reply_markup=settings_keyboard(s)
     )
     await q.answer("✅ Settings updated")
+
 
 # ================= COMMANDS =================
 @app.on_message(filters.command("start") & filters.private)
