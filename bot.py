@@ -378,8 +378,6 @@ async def scanner(client, m: Message):
                 reasons
              )
 
-        })
-
     os.remove(path)
 
 print("✅ Group Scanner Bot Running")
