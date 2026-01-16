@@ -292,33 +292,133 @@ async def unban_cmd(client, m: Message):
         )
     except Exception as e:
         await m.reply(f"❌ Failed to unban\n`{e}`")
+        
 
-
-
-@app.on_message(filters.private & filters.command("userinfo"))
+def userinfo_keyboard(user_id, chat_id):
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "🔄 Refresh",
+                callback_data=f"userinfo_refresh:{chat_id}:{user_id}"
+            )
+        ]
+    ])
+ 
+@app.on_message(filters.command("userinfo"))
 async def userinfo_cmd(client, m: Message):
-    if not m.reply_to_message:
-        return await m.reply("Reply to a user.")
-    user = m.reply_to_message.from_user
 
-    warn_doc = await db.warns.find_one(
-        {"chat_id": m.chat.id, "user_id": user.id}
+    # -------- PRIVATE CHAT --------
+    if m.chat.type == ChatType.PRIVATE:
+        user = m.from_user
+        stats = await db.get_user_stats(user.id)
+        last_log = await db.logs.find_one(
+            {"user_id": user.id},
+            sort=[("time", -1)]
+        )
+
+        text = (
+            f"👤 **Your Account Info**\n\n"
+            f"🆔 ID: `{user.id}`\n"
+            f"👤 Username: @{user.username}\n\n"
+            f"⚠️ Total Warns: {stats['warns']}\n"
+            f"🚫 Total Bans: {stats['bans']}\n"
+            f"🔍 Last NSFW Reason: "
+            f"{last_log['reasons'] if last_log else 'None'}"
+        )
+
+        return await m.reply(
+            text,
+            reply_markup=userinfo_keyboard(user.id, "private")
+        )
+
+    # -------- GROUP / SUPERGROUP --------
+    if m.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+
+        # ADMIN checking another user
+        if m.reply_to_message and m.from_user.is_chat_admin:
+            user = m.reply_to_message.from_user
+
+        # USER checking self
+        elif not m.reply_to_message:
+            user = m.from_user
+
+        # BLOCK non-admin inspecting others
+        else:
+            return await m.reply("❌ Only admins can view other users info.")
+
+        warns = await db.get_warns(m.chat.id, user.id)
+        ban_info = await db.get_ban_info(m.chat.id, user.id)
+        global_stats = await db.get_user_stats(user.id)
+        last_log = await db.get_last_log(m.chat.id, user.id)
+
+        text = (
+            f"👤 **User Info**\n\n"
+            f"🆔 ID: `{user.id}`\n"
+            f"👤 Username: @{user.username}\n\n"
+            f"⚠️ Group Warns: {warns}/{WARN_LIMIT}\n"
+            f"🚫 Group Ban: {'YES' if ban_info else 'NO'}\n\n"
+            f"📊 **Global Stats**\n"
+            f"⚠️ Total Warns: {global_stats['warns']}\n"
+            f"🚫 Total Bans: {global_stats['bans']}\n\n"
+            f"🔍 Last NSFW Reason: "
+            f"{last_log['reasons'] if last_log else 'None'}"
+        )
+
+        await m.reply(
+            text,
+            reply_markup=userinfo_keyboard(user.id, m.chat.id)
+        )
+
+
+@app.on_callback_query(filters.regex("^userinfo_refresh"))
+async def userinfo_refresh(client, q: CallbackQuery):
+    _, chat_id, user_id = q.data.split(":")
+    user_id = int(user_id)
+
+    # PRIVATE
+    if chat_id == "private":
+        stats = await db.get_user_stats(user_id)
+        last_log = await db.logs.find_one(
+            {"user_id": user_id},
+            sort=[("time", -1)]
+        )
+
+        text = (
+            f"👤 **Your Account Info**\n\n"
+            f"🆔 ID: `{user_id}`\n\n"
+            f"⚠️ Total Warns: {stats['warns']}\n"
+            f"🚫 Total Bans: {stats['bans']}\n"
+            f"🔍 Last NSFW Reason: "
+            f"{last_log['reasons'] if last_log else 'None'}"
+        )
+
+    # GROUP
+    else:
+        chat_id = int(chat_id)
+        warns = await db.get_warns(chat_id, user_id)
+        ban_info = await db.get_ban_info(chat_id, user_id)
+        global_stats = await db.get_user_stats(user_id)
+        last_log = await db.get_last_log(chat_id, user_id)
+
+        text = (
+            f"👤 **User Info**\n\n"
+            f"🆔 ID: `{user_id}`\n\n"
+            f"⚠️ Group Warns: {warns}/{WARN_LIMIT}\n"
+            f"🚫 Group Ban: {'YES' if ban_info else 'NO'}\n\n"
+            f"📊 **Global Stats**\n"
+            f"⚠️ Total Warns: {global_stats['warns']}\n"
+            f"🚫 Total Bans: {global_stats['bans']}\n\n"
+            f"🔍 Last NSFW Reason: "
+            f"{last_log['reasons'] if last_log else 'None'}"
+        )
+
+    await q.message.edit_text(
+        text,
+        reply_markup=userinfo_keyboard(user_id, chat_id)
     )
-    warns = warn_doc["count"] if warn_doc else 0
+    await q.answer("🔄 Updated")
 
-    banned = False
-    try:
-        banned = (await client.get_chat_member(m.chat.id, user.id)).status == "kicked"
-    except:
-        pass
 
-    await m.reply(
-        f"👤 **User Info**\n\n"
-        f"ID: `{user.id}`\n"
-        f"Username: @{user.username}\n"
-        f"Warns: {warns}/{WARN_LIMIT}\n"
-        f"Banned: {'YES' if banned else 'NO'}"
-    )
 
 # ================= SCANNER =================
 @app.on_message(filters.video | filters.audio | filters.document | filters.photo)
