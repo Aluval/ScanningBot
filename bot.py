@@ -10,7 +10,6 @@ from pyrogram.types import (
 from nudenet import NudeDetector
 import whisper
 
-
 from Database.database import db
 
 # ============ CONFIG ============
@@ -52,6 +51,7 @@ AUDIO_KEYWORDS = ["sex", "fuck", "porn", "nude"]
 WARN_LIMIT = 3  # 🔒 FIXED
 
 # ================= HELPERS =================
+    
 def admin_only(_, __, m: Message):
     return m.from_user and m.from_user.is_chat_admin
 
@@ -138,22 +138,15 @@ async def settings_cmd(_, m: Message):
 
 
 @app.on_callback_query(filters.regex("^SET_"))
-async def settings_callback(client, q: CallbackQuery):
+async def settings_callback(_, q: CallbackQuery):
+    # 🔒 BOT ADMIN ONLY
+    if q.from_user.id not in ADMIN:
+        return await q.answer(
+            "❌ Only bot admin can change settings",
+            show_alert=True
+        )
+
     chat_id = q.message.chat.id
-    user_id = q.from_user.id
-
-    # 🔒 CHECK ADMIN
-    try:       
-        member = await client.get_chat_member(chat_id, user_id)
-        if member.status not in ("administrator", "creator"):
-            return await q.answer(
-                "❌ Only admins can change settings",
-                show_alert=True
-            )
-    except:
-        return await q.answer("❌ Permission check failed", show_alert=True)
-
-    # ADMIN CONFIRMED
     s = await db.get_settings(chat_id)
 
     if q.data == "SET_toggle_enabled":
@@ -165,7 +158,7 @@ async def settings_callback(client, q: CallbackQuery):
     elif q.data == "SET_toggle_autoban":
         await db.update_setting(chat_id, "auto_ban", not s["auto_ban"])
 
-    # REFRESH MESSAGE
+    # 🔄 REFRESH UI
     s = await db.get_settings(chat_id)
     group_username = f"@{q.message.chat.username}" if q.message.chat.username else "Not set"
 
@@ -214,6 +207,43 @@ async def help_cmd(_, m: Message):
         "ℹ️ Scanner works automatically"
     )
 
+@app.on_message(filters.command("users") & filters.group & filters.user(ADMIN))
+async def users_cmd(_, m: Message):
+    # Counts
+    warned_count = await db.warns.count_documents({})
+    banned_count = await db.bans.count_documents({})
+
+    # Lists
+    warned_cursor = db.warns.find({}, {"_id": 0, "user_id": 1})
+    warned_users = [doc["user_id"] async for doc in warned_cursor]
+
+    banned_cursor = db.bans.find({}, {"_id": 0, "user_id": 1})
+    banned_users = [doc["user_id"] async for doc in banned_cursor]
+
+    text = (
+        "👥 **Bot Users Summary**\n\n"
+        f"⚠️ Warned Users: `{warned_count}`\n"
+        f"🚫 Banned Users: `{banned_count}`\n\n"
+    )
+
+    text += "⚠️ **Warned User IDs**\n"
+    if warned_users:
+        text += "\n".join(f"`{u}`" for u in warned_users[:50])
+        if len(warned_users) > 50:
+            text += f"\n… and {len(warned_users) - 50} more"
+    else:
+        text += "None"
+
+    text += "\n\n🚫 **Banned User IDs**\n"
+    if banned_users:
+        text += "\n".join(f"`{u}`" for u in banned_users[:50])
+        if len(banned_users) > 50:
+            text += f"\n… and {len(banned_users) - 50} more"
+    else:
+        text += "None"
+
+    await m.reply(text)
+    
 @app.on_message(filters.command("id") & filters.group)
 async def id_cmd(_, m: Message):
     await m.reply(
