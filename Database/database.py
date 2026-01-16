@@ -1,10 +1,6 @@
-import os
 import motor.motor_asyncio
 import time
-
-DATABASE_URI = os.getenv("DATABASE_URI","mongodb+srv://HARSHA24:HARSHA24@cluster0.sxaj8up.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
-DATABASE_NAME = os.getenv("DATABASE_NAME", "GroupScannerBot")
-
+from config import DATABASE_NAME, DATABASE_URI
 
 class Database:
     def __init__(self):
