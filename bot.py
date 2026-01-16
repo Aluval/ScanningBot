@@ -103,7 +103,7 @@ def settings_keyboard(settings):
         ]
     ])
 
-@app.on_message(filters.command("settings") & filters.group & filters.create(ADMIN))
+@app.on_message(filters.command("settings") & filters.group & filters.user(ADMIN))
 async def settings_cmd(_, m: Message):
     s = await db.get_settings(m.chat.id)
     await m.reply(
@@ -219,18 +219,18 @@ async def help_cmd(_, message):
 
     await message.reply(text)
 
-@app.on_message(filters.command("enable") & filters.group & filters.create(ADMIN))
+@app.on_message(filters.command("enable") & filters.group & filters.user(ADMIN))
 async def enable_cmd(_, m: Message):
     await db.update_setting(m.chat.id, "enabled", True)
     await m.reply("✅ Scanner enabled for this group.")
 
-@app.on_message(filters.command("disable") & filters.group & filters.create(ADMIN))
+@app.on_message(filters.command("disable") & filters.group & filters.user(ADMIN))
 async def disable_cmd(_, m: Message):
     await db.update_setting(m.chat.id, "enabled", False)
     await m.reply("❌ Scanner disabled for this group.")
     
 
-@app.on_message(filters.command("ban") & filters.group & filters.create(ADMIN))
+@app.on_message(filters.command("ban") & filters.group & filters.user(ADMIN))
 async def ban_cmd(client, m: Message):
     if not m.reply_to_message:
         return await m.reply("Reply to a user to ban.")
@@ -240,7 +240,7 @@ async def ban_cmd(client, m: Message):
     await m.reply(f"⛔ {user.mention} banned.")
     
 
-@app.on_message(filters.command("unban") & filters.group & filters.create(ADMIN))
+@app.on_message(filters.command("unban") & filters.group & filters.user(ADMIN))
 async def unban_cmd(client, m: Message):
     if not m.reply_to_message:
         return await m.reply("Reply to a user to unban.")
@@ -250,7 +250,7 @@ async def unban_cmd(client, m: Message):
     await m.reply(f"✅ {user.mention} unbanned.")
     
 
-@app.on_message(filters.command("warn") & filters.group & filters.create(ADMIN))
+@app.on_message(filters.command("warn") & filters.group & filters.user(ADMIN))
 async def warn_cmd(_, m: Message):
     if not m.reply_to_message:
         return await m.reply("Reply to a user to warn.")
@@ -260,7 +260,7 @@ async def warn_cmd(_, m: Message):
     await m.reply(f"⚠️ {user.mention} warned ({warns})")
 
 
-@app.on_message(filters.command("unwarn") & filters.group & filters.create(ADMIN))
+@app.on_message(filters.command("unwarn") & filters.group & filters.user(ADMIN))
 async def unwarn_cmd(_, m: Message):
     if not m.reply_to_message:
         return await m.reply("Reply to a user to reset warns.")
