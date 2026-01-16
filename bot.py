@@ -371,12 +371,13 @@ async def scanner(client, m: Message):
                 f"Next violation = BAN"
             )
 
-        await db.log_restricted({
-            "chat_id": m.chat.id,
-            "user_id": m.from_user.id,
-            "file": getattr(file, "file_name", "photo"),
-            "reasons": reasons,
-            "time": int(time.time())
+            await db.log_restricted(
+                m.chat.id,
+                m.from_user.id,
+                getattr(file, "file_name", "photo"),
+                reasons
+             )
+
         })
 
     os.remove(path)
