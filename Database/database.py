@@ -14,6 +14,7 @@ class Database:
         self.warns = self.db.warns
         self.logs = self.db.logs
         self.bans = self.db.bans
+        self.user_stats = self.db.user_stats
 
     # ================= SETTINGS =================
     async def get_settings(self, chat_id: int):
@@ -95,5 +96,28 @@ class Database:
         return await self.bans.find_one(
             {"chat_id": chat_id, "user_id": user_id}
         )
+
+
+async def inc_user_warn(self, user_id):
+    await self.user_stats.update_one(
+        {"user_id": user_id},
+        {"$inc": {"warns": 1}},
+        upsert=True
+    )
+
+async def inc_user_ban(self, user_id):
+    await self.user_stats.update_one(
+        {"user_id": user_id},
+        {"$inc": {"bans": 1}},
+        upsert=True
+    )
+
+async def get_user_stats(self, user_id):
+    doc = await self.user_stats.find_one({"user_id": user_id})
+    return {
+        "warns": doc.get("warns", 0) if doc else 0,
+        "bans": doc.get("bans", 0) if doc else 0
+    }
+
 
 db = Database()
