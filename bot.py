@@ -373,8 +373,12 @@ async def userinfo_cmd(client, m: Message):
 
 
 # ================= SCANNER =================
+import uuid
+
+# ================= SCANNER =================
 @app.on_message(filters.video | filters.audio | filters.document | filters.photo)
 async def scanner(client, m: Message):
+
     if m.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
         return
 
@@ -383,29 +387,57 @@ async def scanner(client, m: Message):
         return
 
     file = m.video or m.audio or m.document or m.photo
-    path = await m.download(file_name=DOWNLOAD_DIR)
 
-    info = ffprobe_info(path)
-    has_video = any(s["codec_type"] == "video" for s in info["streams"])
-    has_audio = any(s["codec_type"] == "audio" for s in info["streams"])
+    # 🔹 UNIQUE FILE PATH (CRITICAL FIX)
+    unique_name = f"{uuid.uuid4().hex}"
+    download_path = os.path.join(DOWNLOAD_DIR, unique_name)
+
+    try:
+        path = await m.download(file_name=download_path)
+    except Exception as e:
+        print(f"[DOWNLOAD ERROR] {e}")
+        return
 
     restricted = False
     reasons = []
 
     filename = get_safe_filename(file)
-    
+
+    # -------- FILENAME CHECK --------
     if any(k in filename.lower() for k in FILENAME_KEYWORDS):
-        restricted, reasons = True, ["Filename"]
+        restricted = True
+        reasons.append("Filename")
 
-    if not restricted and has_video:
-        extract_frames(path, settings["frame_fps"])
-        if detect_adult_video(settings["adult_threshold"]):
-            restricted, reasons = True, ["Video"]
+    # -------- PHOTO CHECK (NO FFPROBE) --------
+    if not restricted and m.photo:
+        detections = detector.detect(path)
+        for d in detections:
+            if d["class"] in NSFW_CLASSES:
+                restricted = True
+                reasons.append("Photo")
+                break
 
-    if not restricted and has_audio and settings["scan_audio"]:
-        if detect_explicit_audio(path):
-            restricted, reasons = True, ["Audio"]
+    # -------- VIDEO / AUDIO CHECK --------
+    if not restricted and not m.photo:
+        try:
+            info = ffprobe_info(path)
+            has_video = any(s["codec_type"] == "video" for s in info["streams"])
+            has_audio = any(s["codec_type"] == "audio" for s in info["streams"])
+        except Exception:
+            has_video = has_audio = False
 
+        if has_video:
+            extract_frames(path, settings["frame_fps"])
+            if detect_adult_video(settings["adult_threshold"]):
+                restricted = True
+                reasons.append("Video")
+
+        if not restricted and has_audio and settings["scan_audio"]:
+            if detect_explicit_audio(path):
+                restricted = True
+                reasons.append("Audio")
+
+    # -------- ACTION --------
     if restricted:
         try:
             await client.delete_messages(m.chat.id, m.id)
@@ -413,13 +445,20 @@ async def scanner(client, m: Message):
             pass
 
         warns = await db.add_warn(m.chat.id, m.from_user.id)
+        await db.inc_user_warn(m.from_user.id)
 
         if warns >= WARN_LIMIT:
-            await client.ban_chat_member(m.chat.id, m.from_user.id)
+            try:
+                await client.ban_chat_member(m.chat.id, m.from_user.id)
+            except:
+                pass
+
             await db.reset_warns(m.chat.id, m.from_user.id)
+            await db.inc_user_ban(m.from_user.id)
+
             await client.send_message(
                 m.chat.id,
-                f"⛔ {m.from_user.mention} removed (3 warnings reached)"
+                f"⛔ {m.from_user.mention} banned (Reached {WARN_LIMIT} warnings)"
             )
         else:
             await client.send_message(
@@ -430,14 +469,19 @@ async def scanner(client, m: Message):
                 f"Next violation = BAN"
             )
 
-            await db.log_restricted(
-                m.chat.id,
-                m.from_user.id,
-                get_safe_filename(file),
-                reasons
-             )
+        await db.log_restricted(
+            m.chat.id,
+            m.from_user.id,
+            filename,
+            reasons
+        )
 
-    os.remove(path)
+    # -------- CLEANUP (SAFE) --------
+    try:
+        if path and os.path.exists(path):
+            os.remove(path)
+    except:
+        pass
 
 print("✅ Group Scanner Bot Running")
 app.run()
