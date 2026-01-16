@@ -143,9 +143,9 @@ async def settings_callback(client, q: CallbackQuery):
     user_id = q.from_user.id
 
     # 🔒 CHECK ADMIN
-    try:
+    try:       
         member = await client.get_chat_member(chat_id, user_id)
-        if not member.privileges:
+        if member.status not in ("administrator", "creator"):
             return await q.answer(
                 "❌ Only admins can change settings",
                 show_alert=True
