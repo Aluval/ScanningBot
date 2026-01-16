@@ -290,7 +290,7 @@ async def unban_cmd(client, m: Message):
 
 
 
-@app.on_message(filters.command("userinfo") & filters.group & filters.private)
+@app.on_message(filters.private & filters.command("userinfo"))
 async def userinfo_cmd(client, m: Message):
     if not m.reply_to_message:
         return await m.reply("Reply to a user.")
