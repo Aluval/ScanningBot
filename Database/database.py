@@ -5,6 +5,7 @@ import time
 DATABASE_URI = os.getenv("DATABASE_URI","mongodb+srv://HARSHA24:HARSHA24@cluster0.sxaj8up.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 DATABASE_NAME = os.getenv("DATABASE_NAME", "GroupScannerBot")
 
+
 class Database:
     def __init__(self):
         self.client = motor.motor_asyncio.AsyncIOMotorClient(DATABASE_URI)
@@ -97,27 +98,27 @@ class Database:
             {"chat_id": chat_id, "user_id": user_id}
         )
 
+    # ================= GLOBAL USER STATS =================
+    async def inc_user_warn(self, user_id: int):
+        await self.user_stats.update_one(
+            {"user_id": user_id},
+            {"$inc": {"warns": 1}},
+            upsert=True
+        )
 
-async def inc_user_warn(self, user_id):
-    await self.user_stats.update_one(
-        {"user_id": user_id},
-        {"$inc": {"warns": 1}},
-        upsert=True
-    )
+    async def inc_user_ban(self, user_id: int):
+        await self.user_stats.update_one(
+            {"user_id": user_id},
+            {"$inc": {"bans": 1}},
+            upsert=True
+        )
 
-async def inc_user_ban(self, user_id):
-    await self.user_stats.update_one(
-        {"user_id": user_id},
-        {"$inc": {"bans": 1}},
-        upsert=True
-    )
-
-async def get_user_stats(self, user_id):
-    doc = await self.user_stats.find_one({"user_id": user_id})
-    return {
-        "warns": doc.get("warns", 0) if doc else 0,
-        "bans": doc.get("bans", 0) if doc else 0
-    }
+    async def get_user_stats(self, user_id: int):
+        doc = await self.user_stats.find_one({"user_id": user_id})
+        return {
+            "warns": doc.get("warns", 0) if doc else 0,
+            "bans": doc.get("bans", 0) if doc else 0
+        }
 
 
 db = Database()
