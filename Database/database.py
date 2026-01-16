@@ -120,5 +120,19 @@ class Database:
             "bans": doc.get("bans", 0) if doc else 0
         }
 
+    async def count_warned_users(self):
+        return await self.warns.count_documents({})
+
+    async def count_banned_users(self):
+        return await self.bans.count_documents({})
+
+    async def get_warned_users(self):
+        cursor = self.warns.find({}, {"_id": 0, "user_id": 1})
+        return [doc["user_id"] async for doc in cursor]
+
+    async def get_banned_users(self):
+        cursor = self.bans.find({}, {"_id": 0, "user_id": 1})
+        return [doc["user_id"] async for doc in cursor]
+
 
 db = Database()
