@@ -17,7 +17,7 @@ from Database.database import db
 API_ID = 10811400
 API_HASH = "191bf5ae7a6c39771e7b13cf4ffd1279"
 BOT_TOKEN = "6626666215:AAFSI_ZRp6aoTy9boDgxkrd_2PjyT4myeGg"
-
+ADMIN = 6469754522
 
 DOWNLOAD_DIR = "downloads"
 FRAMES_DIR = "frames"
@@ -103,7 +103,7 @@ def settings_keyboard(settings):
         ]
     ])
 
-@app.on_message(filters.command("settings") & filters.group & filters.create(admin_only))
+@app.on_message(filters.command("settings") & filters.group & filters.create(ADMIN))
 async def settings_cmd(_, m: Message):
     s = await db.get_settings(m.chat.id)
     await m.reply(
@@ -192,6 +192,83 @@ async def scanner(client, m: Message):
         })
 
     os.remove(path)
+
+
+from pyrogram.enums import ChatType
+
+@app.on_message(filters.command("help"))
+async def help_cmd(_, message):
+    if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
+        return
+
+    text = (
+        "🤖 **Group Scanner Bot Commands**\n\n"
+        "👑 **Admin Commands**\n"
+        "/settings – Online settings panel\n"
+        "/enable – Enable scanner\n"
+        "/disable – Disable scanner\n"
+        "/ban – Reply to user to ban\n"
+        "/unban – Reply to user to unban\n"
+        "/warn – Reply to user to warn\n"
+        "/unwarn – Reply to user to reset warns\n\n"
+        "👥 **User Commands**\n"
+        "/id – Show group ID\n"
+        "/help – Show this message\n\n"
+        "ℹ️ Scanner works automatically on media files."
+    )
+
+    await message.reply(text)
+
+@app.on_message(filters.command("enable") & filters.group & filters.create(ADMIN))
+async def enable_cmd(_, m: Message):
+    await db.update_setting(m.chat.id, "enabled", True)
+    await m.reply("✅ Scanner enabled for this group.")
+
+@app.on_message(filters.command("disable") & filters.group & filters.create(ADMIN))
+async def disable_cmd(_, m: Message):
+    await db.update_setting(m.chat.id, "enabled", False)
+    await m.reply("❌ Scanner disabled for this group.")
+    
+
+@app.on_message(filters.command("ban") & filters.group & filters.create(ADMIN))
+async def ban_cmd(client, m: Message):
+    if not m.reply_to_message:
+        return await m.reply("Reply to a user to ban.")
+
+    user = m.reply_to_message.from_user
+    await client.ban_chat_member(m.chat.id, user.id)
+    await m.reply(f"⛔ {user.mention} banned.")
+    
+
+@app.on_message(filters.command("unban") & filters.group & filters.create(ADMIN))
+async def unban_cmd(client, m: Message):
+    if not m.reply_to_message:
+        return await m.reply("Reply to a user to unban.")
+
+    user = m.reply_to_message.from_user
+    await client.unban_chat_member(m.chat.id, user.id)
+    await m.reply(f"✅ {user.mention} unbanned.")
+    
+
+@app.on_message(filters.command("warn") & filters.group & filters.create(ADMIN))
+async def warn_cmd(_, m: Message):
+    if not m.reply_to_message:
+        return await m.reply("Reply to a user to warn.")
+
+    user = m.reply_to_message.from_user
+    warns = await db.add_warn(m.chat.id, user.id)
+    await m.reply(f"⚠️ {user.mention} warned ({warns})")
+
+
+@app.on_message(filters.command("unwarn") & filters.group & filters.create(ADMIN))
+async def unwarn_cmd(_, m: Message):
+    if not m.reply_to_message:
+        return await m.reply("Reply to a user to reset warns.")
+
+    user = m.reply_to_message.from_user
+    await db.reset_warns(m.chat.id, user.id)
+    await m.reply(f"✅ Warns reset for {user.mention}")
+
 
 print("✅ Group Scanner Bot Running")
 app.run()
