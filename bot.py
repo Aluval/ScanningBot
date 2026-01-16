@@ -1,9 +1,14 @@
+
+
+
+
 import os, time, json, subprocess
 from typing import Dict
 from pyrogram import Client, filters
-from nudenet import NudeClassifier
+from nudenet import NudeDetector
 import whisper
 
+# ---------------- CONFIG ----------------
 # ---------------- CONFIG ----------------
 API_ID = 10811400
 API_HASH = "191bf5ae7a6c39771e7b13cf4ffd1279"
@@ -11,10 +16,11 @@ BOT_TOKEN = "6626666215:AAFSI_ZRp6aoTy9boDgxkrd_2PjyT4myeGg"
 
 DOWNLOAD_DIR = "downloads"
 FRAMES_DIR = "frames"
+
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 os.makedirs(FRAMES_DIR, exist_ok=True)
 
-classifier = NudeClassifier()
+detector = NudeDetector()
 whisper_model = whisper.load_model("base")
 
 app = Client(
@@ -31,8 +37,7 @@ def progress_bar(current: int, total: int, task: Dict):
         return
     task["last_edit"] = now
 
-    diff = now - task["start_time"]
-    diff = diff if diff != 0 else 1
+    diff = max(now - task["start_time"], 1)
     speed = current / diff
     eta = (total - current) / speed if speed else 0
     percent = current * 100 / total
@@ -61,28 +66,42 @@ def ffprobe_info(path):
 def extract_frames(video):
     for f in os.listdir(FRAMES_DIR):
         os.remove(os.path.join(FRAMES_DIR, f))
+
     subprocess.run(
         ["ffmpeg", "-i", video, "-vf", "fps=1", f"{FRAMES_DIR}/frame_%03d.jpg", "-y"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
     )
 
+NSFW_CLASSES = {
+    "FEMALE_GENITALIA_EXPOSED",
+    "MALE_GENITALIA_EXPOSED",
+    "ANUS_EXPOSED",
+    "BREAST_EXPOSED"
+}
+
 def detect_adult_video():
-    unsafe = 0
+    hits = 0
     total = 0
+
     for img in os.listdir(FRAMES_DIR):
         path = os.path.join(FRAMES_DIR, img)
-        res = classifier.classify(path)
-        if res[path]["unsafe"] > 0.7:
-            unsafe += 1
+        detections = detector.detect(path)
+
+        for d in detections:
+            if d["class"] in NSFW_CLASSES:
+                hits += 1
+                break
         total += 1
-    return (unsafe / total) if total else 0
+
+    return (hits / total) if total else 0
 
 def detect_explicit_audio(path):
     text = whisper_model.transcribe(path)["text"].lower()
-    words = ["sex", "fuck", "porn", "nude", "xxx"]
-    return any(w in text for w in words)
+    bad_words = ["sex", "fuck", "porn", "nude", "xxx"]
+    return any(w in text for w in bad_words)
 
-# ---------------- BOT COMMAND ----------------
+# ---------------- BOT HANDLER ----------------
 @app.on_message(filters.video | filters.audio | filters.document)
 async def scan_handler(client, message):
     task = {
@@ -105,12 +124,8 @@ async def scan_handler(client, message):
     duration = float(info["format"].get("duration", 0))
     size = os.path.getsize(path) / (1024 * 1024)
 
-    video, audio = None, None
-    for s in info["streams"]:
-        if s["codec_type"] == "video":
-            video = s
-        if s["codec_type"] == "audio":
-            audio = s
+    video = any(s["codec_type"] == "video" for s in info["streams"])
+    audio = any(s["codec_type"] == "audio" for s in info["streams"])
 
     adult = "N/A"
     restricted = False
@@ -122,8 +137,8 @@ async def scan_handler(client, message):
         restricted = ratio > 0.3
 
     if audio:
-        explicit = detect_explicit_audio(path)
-        restricted = restricted or explicit
+        if detect_explicit_audio(path):
+            restricted = True
 
     report = (
         f"📁 File: {file.file_name}\n"
@@ -140,6 +155,4 @@ async def scan_handler(client, message):
 
 # ---------------- START ----------------
 print("✅ Media Scanner Bot Running")
-
-
 app.run()
