@@ -1,18 +1,14 @@
-
-
-
-
 import os, time, json, subprocess
 from typing import Dict
 from pyrogram import Client, filters
 from nudenet import NudeDetector
 import whisper
 
-# ---------------- CONFIG ----------------
-# ---------------- CONFIG ----------------
+# ================== CONFIG ==================
 API_ID = 10811400
 API_HASH = "191bf5ae7a6c39771e7b13cf4ffd1279"
 BOT_TOKEN = "6626666215:AAFSI_ZRp6aoTy9boDgxkrd_2PjyT4myeGg"
+
 
 DOWNLOAD_DIR = "downloads"
 FRAMES_DIR = "frames"
@@ -30,13 +26,13 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
-# ---------------- FAST PROGRESS BAR ----------------
+# ================== PROGRESS BAR ==================
 def progress_bar(current: int, total: int, task: Dict):
     now = time.time()
     if "last_edit" in task and now - task["last_edit"] < 2:
         return
-    task["last_edit"] = now
 
+    task["last_edit"] = now
     diff = max(now - task["start_time"], 1)
     speed = current / diff
     eta = (total - current) / speed if speed else 0
@@ -46,18 +42,18 @@ def progress_bar(current: int, total: int, task: Dict):
     filled = int(bar_len * current / total)
     bar = "█" * filled + "░" * (bar_len - filled)
 
-    msg = (
+    text = (
         f"{task['action']} [{bar}] {percent:.0f}%\n"
         f"Speed: {speed / (1024*1024):.2f} MB/s\n"
         f"ETA: {int(eta)} sec"
     )
 
     try:
-        task["message"].edit_text(msg)
+        task["message"].edit_text(text)
     except:
         pass
 
-# ---------------- MEDIA UTILITIES ----------------
+# ================== MEDIA UTILS ==================
 def ffprobe_info(path):
     cmd = ["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", path]
     out = subprocess.run(cmd, capture_output=True, text=True)
@@ -68,17 +64,30 @@ def extract_frames(video):
         os.remove(os.path.join(FRAMES_DIR, f))
 
     subprocess.run(
-        ["ffmpeg", "-i", video, "-vf", "fps=1", f"{FRAMES_DIR}/frame_%03d.jpg", "-y"],
+        ["ffmpeg", "-i", video, "-vf", "fps=2", f"{FRAMES_DIR}/frame_%03d.jpg", "-y"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL
     )
 
+# ================== DETECTION LOGIC ==================
 NSFW_CLASSES = {
     "FEMALE_GENITALIA_EXPOSED",
     "MALE_GENITALIA_EXPOSED",
     "ANUS_EXPOSED",
-    "BREAST_EXPOSED"
+    "BREAST_EXPOSED",
+    "FEMALE_BREAST_EXPOSED",
+    "BUTTOCKS_EXPOSED",
+    "FEMALE_UNDERWEAR",
+    "MALE_UNDERWEAR"
 }
+
+FILENAME_KEYWORDS = [
+    "18", "adult", "porn", "xxx", "sex",
+    "nude", "ashleel", "hot", "leak"
+]
+
+def filename_flag(name: str) -> bool:
+    return any(k in name.lower() for k in FILENAME_KEYWORDS)
 
 def detect_adult_video():
     hits = 0
@@ -98,10 +107,10 @@ def detect_adult_video():
 
 def detect_explicit_audio(path):
     text = whisper_model.transcribe(path)["text"].lower()
-    bad_words = ["sex", "fuck", "porn", "nude", "xxx"]
-    return any(w in text for w in bad_words)
+    words = ["sex", "fuck", "porn", "nude", "xxx"]
+    return any(w in text for w in words)
 
-# ---------------- BOT HANDLER ----------------
+# ================== BOT HANDLER ==================
 @app.on_message(filters.video | filters.audio | filters.document)
 async def scan_handler(client, message):
     task = {
@@ -111,6 +120,7 @@ async def scan_handler(client, message):
     }
 
     file = message.video or message.audio or message.document
+
     path = await message.download(
         file_name=DOWNLOAD_DIR,
         progress=progress_bar,
@@ -121,38 +131,48 @@ async def scan_handler(client, message):
     await task["message"].edit_text("🔍 Scanning file...")
 
     info = ffprobe_info(path)
-    duration = float(info["format"].get("duration", 0))
+    duration = int(float(info["format"].get("duration", 0)))
     size = os.path.getsize(path) / (1024 * 1024)
 
-    video = any(s["codec_type"] == "video" for s in info["streams"])
-    audio = any(s["codec_type"] == "audio" for s in info["streams"])
+    has_video = any(s["codec_type"] == "video" for s in info["streams"])
+    has_audio = any(s["codec_type"] == "audio" for s in info["streams"])
 
-    adult = "N/A"
     restricted = False
+    adult_reason = []
 
-    if video:
+    # ---- Filename check
+    if filename_flag(file.file_name):
+        restricted = True
+        adult_reason.append("Filename")
+
+    # ---- Video check
+    if has_video:
         extract_frames(path)
         ratio = detect_adult_video()
-        adult = f"YES ({ratio*100:.0f}%)" if ratio > 0.3 else "NO"
-        restricted = ratio > 0.3
-
-    if audio:
-        if detect_explicit_audio(path):
+        if ratio > 0.15:
             restricted = True
+            adult_reason.append(f"Frames {ratio*100:.0f}%")
+
+    # ---- Audio check
+    if has_audio and detect_explicit_audio(path):
+        restricted = True
+        adult_reason.append("Audio")
+
+    adult_status = "YES (" + ", ".join(adult_reason) + ")" if restricted else "NO"
 
     report = (
         f"📁 File: {file.file_name}\n"
         f"📦 Size: {size:.2f} MB\n"
-        f"⏱ Duration: {int(duration)} sec\n"
-        f"🎥 Video: {'YES' if video else 'NO'}\n"
-        f"🎵 Audio: {'YES' if audio else 'NO'}\n"
-        f"🔞 Adult Content: {adult}\n"
+        f"⏱ Duration: {duration} sec\n"
+        f"🎥 Video: {'YES' if has_video else 'NO'}\n"
+        f"🎵 Audio: {'YES' if has_audio else 'NO'}\n"
+        f"🔞 Adult Content: {adult_status}\n"
         f"🚫 Restricted: {'YES' if restricted else 'NO'}"
     )
 
     await task["message"].edit_text(report)
     os.remove(path)
 
-# ---------------- START ----------------
+# ================== START ==================
 print("✅ Media Scanner Bot Running")
 app.run()
