@@ -59,6 +59,11 @@ def ffprobe_info(path):
     cmd = ["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", path]
     return json.loads(subprocess.run(cmd, capture_output=True, text=True).stdout)
 
+def get_safe_filename(file):
+    if hasattr(file, "file_name") and file.file_name:
+        return file.file_name
+    return "photo"
+
 def extract_frames(video, fps):
     for f in os.listdir(FRAMES_DIR):
         os.remove(os.path.join(FRAMES_DIR, f))
@@ -335,7 +340,9 @@ async def scanner(client, m: Message):
     restricted = False
     reasons = []
 
-    if any(k in (file.file_name or "").lower() for k in FILENAME_KEYWORDS):
+    filename = get_safe_filename(file)
+    
+    if any(k in filename.lower() for k in FILENAME_KEYWORDS):
         restricted, reasons = True, ["Filename"]
 
     if not restricted and has_video:
@@ -374,7 +381,7 @@ async def scanner(client, m: Message):
             await db.log_restricted(
                 m.chat.id,
                 m.from_user.id,
-                getattr(file, "file_name", "photo"),
+                get_safe_filename(file),
                 reasons
              )
 
