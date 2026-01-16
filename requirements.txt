@@ -1,0 +1,8 @@
+pyrogram==2.0.106
+tgcrypto
+nudenet
+openai-whisper
+ffmpeg-python
+numpy
+torch
+torchvision
