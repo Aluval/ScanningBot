@@ -106,7 +106,7 @@ def settings_keyboard(settings):
         ]
     ])
 
-@app.on_message(filters.command("settings") & filters.group & filters.create(admin_only))
+@app.on_message(filters.command("settings") & filters.group & filters.user(ADMIN))
 async def settings_cmd(_, m: Message):
     s = await db.get_settings(m.chat.id)
     group_username = f"@{m.chat.username}" if m.chat.username else "Not set"
@@ -200,19 +200,19 @@ async def id_cmd(_, m: Message):
     )
 
 
-@app.on_message(filters.command("enable") & filters.group & filters.create(admin_only))
+@app.on_message(filters.command("enable") & filters.group & filters.user(ADMIN))
 async def enable_cmd(_, m: Message):
     await db.update_setting(m.chat.id, "enabled", True)
     await m.reply("✅ Scanner enabled for this group.")
 
 
-@app.on_message(filters.command("disable") & filters.group & filters.create(admin_only))
+@app.on_message(filters.command("disable") & filters.group & filters.user(ADMIN))
 async def disable_cmd(_, m: Message):
     await db.update_setting(m.chat.id, "enabled", False)
     await m.reply("❌ Scanner disabled for this group.")
 
 
-@app.on_message(filters.command("warn") & filters.group & filters.create(admin_only))
+@app.on_message(filters.command("warn") & filters.group & filters.user(ADMIN))
 async def warn_cmd(client, m: Message):
     if not m.reply_to_message:
         return await m.reply("Reply to a user to warn.")
@@ -237,7 +237,7 @@ async def warn_cmd(client, m: Message):
     )
 
 
-@app.on_message(filters.command("unwarn") & filters.group & filters.create(admin_only))
+@app.on_message(filters.command("unwarn") & filters.group & filters.user(ADMIN))
 async def unwarn_cmd(_, m: Message):
     if not m.reply_to_message:
         return await m.reply("Reply to a user to reset warns.")
@@ -251,7 +251,7 @@ async def unwarn_cmd(_, m: Message):
     )
 
 
-@app.on_message(filters.command("ban") & filters.group & filters.create(admin_only))
+@app.on_message(filters.command("ban") & filters.group & filters.user(ADMIN))
 async def ban_cmd(client, m: Message):
     if not m.reply_to_message:
         return await m.reply("Reply to a user to ban.")
@@ -268,7 +268,7 @@ async def ban_cmd(client, m: Message):
         f"📝 Reason: Manual ban"
     )
 
-@app.on_message(filters.command("unban") & filters.group & filters.create(admin_only))
+@app.on_message(filters.command("unban") & filters.group & filters.user(ADMIN))
 async def unban_cmd(client, m: Message):
     if not m.reply_to_message:
         return await m.reply("Reply to a banned user.")
@@ -290,7 +290,7 @@ async def unban_cmd(client, m: Message):
 
 
 
-@app.on_message(filters.command("userinfo") & filters.group & filters.create(admin_only))
+@app.on_message(filters.command("userinfo") & filters.group & filters.private)
 async def userinfo_cmd(client, m: Message):
     if not m.reply_to_message:
         return await m.reply("Reply to a user.")
